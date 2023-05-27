@@ -19,6 +19,7 @@ use std::thread::{self, JoinHandle};
 use anyhow::{anyhow, Context};
 use cpal::traits::StreamTrait;
 use crossbeam::channel::Receiver;
+use lazy_static::lazy_static;
 use symphonia::{
     core::{
         audio::{AsAudioBufferRef, AudioBuffer},
@@ -28,10 +29,12 @@ use symphonia::{
         probe::Hint,
         units::{Time, TimeBase},
     },
-    default,
+    default::{self, register_enabled_codecs},
 };
+use symphonia_core::codecs::CodecRegistry;
 
 use crate::{
+    audio::opus::OpusDecoder,
     media_controllers,
     utils::{
         callback_stream::update_callback_stream,
@@ -40,6 +43,15 @@ use crate::{
 };
 
 use super::{controls::*, cpal_output::CpalOutput};
+
+lazy_static! {
+    static ref CODEC_REGISTRY: CodecRegistry = {
+        let mut registry = CodecRegistry::new();
+        register_enabled_codecs(&mut registry);
+        registry.register_all::<OpusDecoder>();
+        registry
+    };
+}
 
 pub struct Decoder
 {
@@ -352,7 +364,7 @@ impl Decoder
             .context("Cannot start playback. There are no tracks present in the file.")?;
         let track_id = track.id;
 
-        let decoder = default::get_codecs().make(&track.codec_params, &Default::default())?;
+        let decoder = CODEC_REGISTRY.make(&track.codec_params, &Default::default())?;
 
         // Used only for outputting the current position and duration.
         let timebase = track.codec_params.time_base.or_else(|| {
